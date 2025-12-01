@@ -1,0 +1,327 @@
+{
+	"info": {
+		"_postman_id": "57bce8c9-2a26-4e7a-bb5d-0e04464a391f",
+		"name": "backend-course-2025-6",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50110332",
+		"_collection_link": "https://sofiia-khinotska-568674.postman.co/workspace/Sofiia-Khinotska's-Workspace~2d7376e9-596a-4aef-8671-c74b49756ab7/collection/50110332-57bce8c9-2a26-4e7a-bb5d-0e04464a391f?action=share&source=collection_link&creator=50110332"
+	},
+	"item": [
+		{
+			"name": "RegisterForm.html",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/RegisterForm.html",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"RegisterForm.html"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "SearchForm.html",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/SearchForm.html",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"SearchForm.html"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "register",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Цей код виконається ПІСЛЯ отримання відповіді\r",
+							"try {\r",
+							"    // 1. Отримати JSON з відповіді\r",
+							"    const responseData = pm.response.json();\r",
+							"\r",
+							"    // 2. Зберегти 'id' у змінну колекції\r",
+							"    if (responseData.id) {\r",
+							"        pm.collectionVariables.set(\"ID\", responseData.id);\r",
+							"        console.log(\"Змінну 'ID' встановлено на:\", responseData.id);\r",
+							"    }\r",
+							"} catch (e) {\r",
+							"    console.error(\"Не вдалося розпарсити JSON або знайти id:\", e);\r",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {},
+						"requests": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "inventory_name",
+							"value": "test name",
+							"type": "text"
+						},
+						{
+							"key": "description",
+							"value": "test description",
+							"type": "text"
+						},
+						{
+							"key": "photo",
+							"type": "file",
+							"src": "postman-cloud:///1f0c31e2-5a41-41b0-abcb-7a7799364c64"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseURL}}/register",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "inventory",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/inventory",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"inventory"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "search",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "id",
+							"value": "{{ID}}",
+							"type": "text"
+						},
+						{
+							"key": "has_photo",
+							"value": "on",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseURL}}/search",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "search_id",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/search?id={{ID}}&includePhoto=on",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"search"
+					],
+					"query": [
+						{
+							"key": "id",
+							"value": "{{ID}}"
+						},
+						{
+							"key": "includePhoto",
+							"value": "on"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "inventory_id",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/inventory/{{ID}}",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"inventory",
+						"{{ID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "inventory_id",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"name\": \"test3\",\r\n  \"description\": \"asdflgbhkmjsfdgfyhjhadsf\",\r\n  \"photoUrl\": \"/inventory/58d86e96-f224-40fd-97e2-6e61edac7fbf/photo\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/inventory/{{ID}}",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"inventory",
+						"{{ID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "delete",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/inventory/{{ID}}",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"inventory",
+						"{{ID}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "inventory_photo",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/inventory/{{ID}}/photo",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"inventory",
+						"{{ID}}",
+						"photo"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "inventory_photo",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "file",
+					"file": {
+						"src": "postman-cloud:///1f0c3208-fef7-4490-a04d-2af54438cc30"
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/inventory/{{ID}}/photo",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"inventory",
+						"{{ID}}",
+						"photo"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseURL",
+			"value": ""
+		},
+		{
+			"key": "ID",
+			"value": ""
+		}
+	]
+}

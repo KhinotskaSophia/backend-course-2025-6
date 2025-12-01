@@ -1,10 +1,14 @@
 const fs = require('fs/promises');
-const { program } = require('commander');
-const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
-const url = require('url');
-const { formidable } = require('formidable');
+const http = require('http'); 
+const express = require('express');
+const { program } = require('commander');
+const formidable = require('formidable');
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
+
+const inventoryDB = {}; 
 
 program
     .requiredOption('-h, --host <host>', 'server host')
@@ -12,8 +16,17 @@ program
     .requiredOption('-c, --cache <path>', 'cache directory path');
 
 program.parse(process.argv);
-
 const options = program.opts();
+
+const app = express();
+
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 async function setupCache() {
     try {
@@ -25,28 +38,6 @@ async function setupCache() {
     }
 }
 
-const inventoryDB = {
-    // 'uuid': { id: 'uuid', name: '...', description: '...', photoPath: '...' }
-};
-
-function readBody(req) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        req.on('data', chunk => chunks.push(chunk));
-        req.on('end', () => resolve(Buffer.concat(chunks)));
-        req.on('error', err => reject(err));
-    });
-}
-
-function sendJSON(res, data, statusCode = 200) {
-    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(data));
-}
-
-function sendError(res, message, statusCode = 400) {
-    sendJSON(res, { error: message }, statusCode);
-}
-
 function itemToClient(item) {
     const clientItem = { ...item };
     if (clientItem.photoPath) {
@@ -56,222 +47,400 @@ function itemToClient(item) {
     return clientItem;
 }
 
-async function startServer() {
-    await setupCache();
+const swaggerDefinition = {
+    openapi: '3.0.0',
+    info: {
+        title: 'Inventory API',
+        version: '1.0.0',
+        description: 'Express API for Inventory Management',
+    },
+    servers: [
+        {
+            url: `http://${options.host}:${options.port}`,
+            description: 'Development server',
+        },
+    ],
+};
 
-    const server = http.createServer(async (req, res) => {
-        const { pathname, query } = url.parse(req.url, true);
-        const method = req.method;
-        const originalWriteHead = res.writeHead;
+const swaggerOptions = {
+    swaggerDefinition,
+    apis: [__filename], 
+};
 
-        res.writeHead = (statusCode, headers) => {
-            console.log(`[${new Date().toISOString()}] ${method} ${req.url} - ${statusCode}`);
-            originalWriteHead.apply(res, [statusCode, headers]);
-        };
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
-        const inventoryRegex = /^\/inventory\/([a-zA-Z0-9-]+)$/;
-        const photoRegex = /^\/inventory\/([a-zA-Z0-9-]+)\/photo$/;
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-        try {
-            if (pathname === '/RegisterForm.html' && method === 'GET') {
-                try {
-                    const filePath = path.join(__dirname, 'RegisterForm.html');
-                    const fileContent = await fs.readFile(filePath);
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end(fileContent);
-                } catch (err) {
-                    sendError(res, 'RegisterForm.html not found', 404);
-                }
-            
-            } else if (pathname === '/SearchForm.html' && method === 'GET') {
-                try {
-                    const filePath = path.join(__dirname, 'SearchForm.html');
-                    const fileContent = await fs.readFile(filePath);
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end(fileContent);
-                } catch (err) {
-                    sendError(res, 'SearchForm.html not found', 404);
-                }
+/**
+ * @swagger
+ * /RegisterForm.html:
+ *  get:
+ *      summary: Got Register Form
+ *      description: Returns an HTML page with a registration form.
+ *      responses:
+ *          200:
+ *              description: HTML page
+ */
 
-            } else if (pathname === '/register' && method === 'POST') {
-                const form = formidable({ 
-                    uploadDir: options.cache, 
-                    keepExtensions: true,
-                    maxFileSize: 10 * 1024 * 1024 // 10MB
-                });
+app.get('/RegisterForm.html', async (req, res) => {
+    const filePath = path.join(__dirname, 'RegisterForm.html');
+    try {
+        await fs.access(filePath); 
+        res.sendFile(filePath);
+    } catch (err) {
+        res.status(404).json({ error: 'RegisterForm.html not found' });
+    }
+});
 
-                form.parse(req, (err, fields, files) => {
-                    if (err) {
-                        sendError(res, 'Error parsing form data', 500);
-                        return;
-                    }
+/**
+ * @swagger
+ * /SearchForm.html:
+ *  get:
+ *      summary: Got Search Form
+ *      description: Returns an HTML page with a search form.
+ *      responses:
+ *          200:
+ *              description: HTML page
+ */
 
-                    const inventory_name = Array.isArray(fields.inventory_name) 
-                    ? fields.inventory_name[0] : fields.inventory_name;
-                    const description = Array.isArray(fields.description) 
-                    ? fields.description[0] : fields.description;
-                    const photo = files.photo ? (Array.isArray(files.photo) 
-                    ? files.photo[0] : files.photo) : null;
+app.get('/SearchForm.html', async (req, res) => {
+    const filePath = path.join(__dirname, 'SearchForm.html');
+    try {
+        await fs.access(filePath);
+        res.sendFile(filePath);
+    } catch (err) {
+        res.status(404).json({ error: 'SearchForm.html not found' });
+    }
+});
 
-                    if (!inventory_name) {
-                        if (photo) {
-                            fs.unlink(photo.filepath).catch(console.error);
-                        }
-                        sendError(res, 'inventory_name is required', 400);
-                        return;
-                    }
+/**
+ * @swagger
+ * /register:
+ *  post:
+ *      summary: Register new item
+ *      description: Creates a new record (multipart/form-data).
+ *      requestBody:
+ *          required: true
+ *          content:
+ *              multipart/form-data:
+ *                  schema:
+ *                      type: object
+ *                      required:
+ *                          - inventory_name
+ *                      properties:
+ *                          inventory_name:
+ *                              type: string
+ *                          description:
+ *                              type: string
+ *                          photo:
+ *                              type: string
+ *                              format: binary
+ *      responses:
+ *          201:
+ *              description: Created
+ *          400:
+ *              description: Bad request
+ */
 
-                    const id = crypto.randomUUID();
-                    const newItem = {
-                        id,
-                        name: inventory_name,
-                        description: description || '',
-                        photoPath: photo ? photo.filepath : null 
-                    };
-
-                    inventoryDB[id] = newItem;
-                    console.log('Registered new item:', newItem);
-                    sendJSON(res, itemToClient(newItem), 201); 
-                });
-
-            } else if (pathname === '/inventory' && method === 'GET') {
-                const allItems = Object.values(inventoryDB).map(itemToClient);
-                sendJSON(res, allItems, 200);
-            
-            } else if (pathname === '/search' && method === 'GET') {
-                const { id, includePhoto } = query; 
-
-                const item = inventoryDB[id];
-                if (!item) {
-                    sendError(res, 'Not Found', 404);
-                    return;
-                }
-
-                const clientItem = itemToClient(item);
-
-                if (includePhoto === 'on' && clientItem.photoUrl) {
-                    clientItem.description = (clientItem.description || '') + ` [Photo Link: ${clientItem.photoUrl}]`;
-                }
-                
-                sendJSON(res, clientItem, 200);
-
-            } else if (pathname === '/search' && method === 'POST') {
-                const body = (await readBody(req)).toString();
-                const params = new URLSearchParams(body);
-                const id = params.get('id');
-                const has_photo = params.get('has_photo'); 
-
-                const item = inventoryDB[id];
-                if (!item) {
-                    sendError(res, 'Not Found', 404);
-                    return;
-                }
-
-                const clientItem = itemToClient(item);
-
-                if (has_photo === 'on' && clientItem.photoUrl) {
-                    clientItem.description = (clientItem.description || '') + 
-                    ` [Photo Link: ${clientItem.photoUrl}]`;
-                }
-                
-                sendJSON(res, clientItem, 200);
-
-            } else if (inventoryRegex.test(pathname)) {
-                const match = pathname.match(inventoryRegex);
-                const id = match[1];
-                const item = inventoryDB[id];
-
-                if (!item) {
-                    sendError(res, 'Not Found', 404);
-                    return;
-                }
-
-                if (method === 'GET') {
-                    sendJSON(res, itemToClient(item), 200);
-
-                } else if (method === 'PUT') {
-                    const body = (await readBody(req)).toString();
-                    const { name, description } = JSON.parse(body);
-
-                    if (name) item.name = name;
-                    if (description) item.description = description;
-                    
-                    inventoryDB[id] = item;
-                    sendJSON(res, itemToClient(item), 200);
-
-                } else if (method === 'DELETE') {
-                    if (item.photoPath) {
-                        await fs.unlink(item.photoPath).catch(err => {
-                            console.error(`Failed to delete photo: ${err.message}`);
-                        });
-                    }
-                    delete inventoryDB[id];
-                    sendJSON(res, { message: `Item ${id} deleted` }, 200);
-
-                } else {
-                    sendError(res, 'Method Not Allowed', 405);
-                }
-
-            } else if (photoRegex.test(pathname)) {
-                const match = pathname.match(photoRegex);
-                const id = match[1];
-                const item = inventoryDB[id];
-
-                if (!item) {
-                    sendError(res, 'Not Found', 404);
-                    return;
-                }
-
-                if (method === 'GET') {
-                    if (!item.photoPath) {
-                        sendError(res, 'Photo Not Found', 404);
-                        return;
-                    }
-                    try {
-                        const photoData = await fs.readFile(item.photoPath);
-                        res.writeHead(200, { 'Content-Type': 'image/jpeg' });
-                        res.end(photoData);
-                    } catch (readErr) {
-                        sendError(res, 'Photo file not found on server', 404);
-                    }
-
-                } else if (method === 'PUT') {
-                    const newPhotoData = await readBody(req);
-                    if (newPhotoData.length === 0) {
-                        sendError(res, 'Empty photo data', 400);
-                        return;
-                    }
-
-                    if (item.photoPath) {
-                        await fs.unlink(item.photoPath).catch(console.error);
-                    }
-
-                    const newPhotoPath = path.join(options.cache, `photo_${id}_${Date.now()}.jpg`);
-                    await fs.writeFile(newPhotoPath, newPhotoData);
-                    
-                    item.photoPath = newPhotoPath;
-                    sendJSON(res, { message: 'Photo updated' }, 200);
-                
-                } else {
-                    sendError(res, 'Method Not Allowed', 405);
-                }
-
-            } else {
-                sendError(res, 'Not Found', 404);
-            }
-        
-        } catch (err) {
-            console.error('Unhandled error:', err);
-            sendError(res, 'Internal Server Error', 500);
-        }
+app.post('/register', (req, res, next) => {
+    const form = new formidable.IncomingForm({ 
+        uploadDir: options.cache, 
+        keepExtensions: true,
+        maxFileSize: 10 * 1024 * 1024 
     });
 
-    server.listen(options.port, options.host, () => {
-        console.log(`
+    form.parse(req, (err, fields, files) => {
+        if (err) {
+            return res.status(500).json({ error: 'Error parsing form data' });
+        }
 
+        const inventory_name = Array.isArray(fields.inventory_name) ? fields.inventory_name[0] : fields.inventory_name;
+        const description = Array.isArray(fields.description) ? fields.description[0] : fields.description;
+        const photo = files.photo ? (Array.isArray(files.photo) ? files.photo[0] : files.photo) : null;
+
+        if (!inventory_name) {
+            if (photo) fs.unlink(photo.filepath).catch(console.error);
+            return res.status(400).json({ error: 'inventory_name is required' });
+        }
+
+        const id = crypto.randomUUID();
+        const newItem = {
+            id,
+            name: inventory_name,
+            description: description || '',
+            photoPath: photo ? photo.filepath : null 
+        };
+
+        inventoryDB[id] = newItem;
+        console.log('Registered new item:', newItem);
+        res.status(201).json(itemToClient(newItem));
+    });
+});
+
+/**
+ * @swagger
+ * /inventory:
+ *  get:
+ *      summary: Getting a list of things
+ *      responses:
+ *          200:
+ *              description: An array of things
+ */
+app.get('/inventory', (req, res) => {
+    const allItems = Object.values(inventoryDB).map(itemToClient);
+    res.json(allItems);
+});
+
+/**
+ * @swagger
+ * /inventory/{id}:
+ *   get:
+ *     summary: Get a single item
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Item ID
+ *     responses:
+ *       200:
+ *         description: Item object
+ *       404:
+ *         description: Not found
+ */
+
+app.get('/inventory/:id', (req, res) => {
+    const item = inventoryDB[req.params.id];
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+    res.json(itemToClient(item));
+});
+
+/**
+ * @swagger
+ * /inventory/{id}:
+ *   put:
+ *     summary: Update name/description
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Item ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Updated
+ *       404:
+ *         description: Not found
+ */
+
+app.put('/inventory/:id', (req, res) => {
+    const id = req.params.id;
+    const item = inventoryDB[id];
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+
+    const { name, description } = req.body; 
+
+    if (name) item.name = name;
+    if (description) item.description = description;
+    
+    inventoryDB[id] = item;
+    res.json(itemToClient(item));
+});
+
+/**
+ * @swagger
+ * /inventory/{id}:
+ *   delete:
+ *     summary: Delete item
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Item ID 
+ *     responses:
+ *       200:
+ *         description: Deleted
+ *       404:
+ *         description: Not found
+ */
+
+app.delete('/inventory/:id', async (req, res) => {
+    const id = req.params.id;
+    const item = inventoryDB[id];
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+
+    if (item.photoPath) {
+        await fs.unlink(item.photoPath).catch(err => {
+            console.error(`Failed to delete photo: ${err.message}`);
+        });
+    }
+    delete inventoryDB[id];
+    res.json({ message: `Item ${id} deleted` });
+});
+
+/**
+ * @swagger
+ * /inventory/{id}/photo:
+ *   get:
+ *     summary: Getting a photo
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Item ID 
+ *     responses:
+ *       200:
+ *         description: Photo 
+ *       404:
+ *         description: Photo not found
+ */
+
+app.get('/inventory/:id/photo', async (req, res) => {
+    const item = inventoryDB[req.params.id];
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+    if (!item.photoPath) return res.status(404).json({ error: 'Photo Not Found' });
+
+    res.sendFile(path.resolve(item.photoPath), (err) => {
+        if (err) res.status(404).json({ error: 'Photo file missing on server' });
+    });
+});
+
+/**
+ * @swagger
+ * /inventory/{id}/photo:
+ *   put:
+ *     summary: Photo update
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Item ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               photo:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Photo updated
+ *       404:
+ *         description: Not found
+ */
+
+app.put('/inventory/:id/photo', async (req, res) => {
+    const id = req.params.id;
+    const item = inventoryDB[id];
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', async () => {
+        const newPhotoData = Buffer.concat(chunks);
+        
+        if (newPhotoData.length === 0) {
+            return res.status(400).json({ error: 'Empty photo data' });
+        }
+
+        if (item.photoPath) {
+            await fs.unlink(item.photoPath).catch(console.error);
+        }
+
+        const newPhotoPath = path.join(options.cache, `photo_${id}_${Date.now()}.jpg`);
+        try {
+            await fs.writeFile(newPhotoPath, newPhotoData);
+            item.photoPath = newPhotoPath;
+            res.json({ message: 'Photo updated' });
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to save photo' });
+        }
+    });
+});
+
+app.get('/search', (req, res) => {
+    const { id, includePhoto } = req.query;
+    const item = inventoryDB[id];
+    
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+
+    const clientItem = itemToClient(item);
+    if (includePhoto === 'on' && clientItem.photoUrl) {
+        clientItem.description = (clientItem.description || '') + ` [Photo Link: ${clientItem.photoUrl}]`;
+    }
+    res.json(clientItem);
+});
+
+/**
+ * @swagger
+ * /search:
+ *   post:
+ *     summary: Search for something
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/x-www-form-urlencoded:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - id
+ *             properties:
+ *               id:
+ *                 type: string
+ *               includePhoto:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Found
+ *       404:
+ *         description: Not found
+ */
+
+app.post('/search', (req, res) => {
+    const { id, has_photo } = req.body;
+    
+    const item = inventoryDB[id];
+    if (!item) return res.status(404).json({ error: 'Not Found' });
+
+    const clientItem = itemToClient(item);
+    if (has_photo === 'on' && clientItem.photoUrl) {
+        clientItem.description = (clientItem.description || '') + ` [Photo Link: ${clientItem.photoUrl}]`;
+    }
+    res.json(clientItem);
+});
+
+app.use((_, res) => res.sendStatus(405));
+
+async function startServer() {
+    await setupCache();
+    
+    app.listen(options.port, options.host, () => {
+        console.log(`
   Server running at http://${options.host}:${options.port}
   Cache: ${options.cache}
-
+  Swagger UI at http://${options.host}:${options.port}/docs
         `);
     });
 }
